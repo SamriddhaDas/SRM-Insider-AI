@@ -1,1 +1,58 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700&display=swap');
 
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body, #root { height: 100%; }
+  body { @apply font-sans text-slate-800 antialiased bg-slate-50; }
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-slate-300 rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-slate-400; }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-srm-600 hover:bg-srm-700 text-white font-medium rounded-xl px-4 py-2.5 transition-all duration-150 cursor-pointer border-none outline-none;
+  }
+  .btn-secondary {
+    @apply bg-white hover:bg-slate-50 text-slate-700 font-medium rounded-xl px-4 py-2.5 transition-all duration-150 cursor-pointer border border-slate-200;
+  }
+  .input-field {
+    @apply w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 bg-white placeholder-slate-400 outline-none transition-all duration-150 focus:border-srm-500 focus:ring-2 focus:ring-srm-100 font-sans;
+  }
+  .card {
+    @apply bg-white rounded-2xl border border-slate-100 shadow-sm;
+  }
+  .sidebar-item {
+    @apply flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer text-slate-300 hover:text-white hover:bg-white/10 transition-all duration-150 text-sm font-medium w-full border-none bg-transparent;
+  }
+  .sidebar-item.active {
+    @apply bg-white/15 text-white;
+  }
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+  .prose-message p { @apply mb-2 leading-relaxed last:mb-0; }
+  .prose-message ul { @apply pl-5 mb-2 space-y-1 list-disc; }
+  .prose-message ol { @apply pl-5 mb-2 space-y-1 list-decimal; }
+  .prose-message li { @apply leading-relaxed; }
+  .prose-message strong { @apply font-semibold text-srm-700; }
+  .prose-message code { @apply bg-slate-100 text-red-600 px-1.5 py-0.5 rounded text-xs font-mono; }
+  .prose-message pre { @apply bg-slate-900 text-slate-100 p-4 rounded-xl my-3 overflow-x-auto text-xs font-mono leading-relaxed; }
+  .prose-message blockquote { @apply border-l-4 border-srm-400 pl-3 my-2 text-slate-500 italic; }
+  .prose-message h1 { @apply text-lg font-semibold text-srm-700 mb-2 mt-3; }
+  .prose-message h2 { @apply text-base font-semibold text-srm-700 mb-1.5 mt-2.5; }
+  .prose-message h3 { @apply text-sm font-semibold mb-1 mt-2; }
+  .prose-message table { @apply w-full text-sm border-collapse my-3; }
+  .prose-message th { @apply bg-slate-50 text-left px-3 py-2 font-semibold border-b-2 border-slate-200; }
+  .prose-message td { @apply px-3 py-2 border-b border-slate-100; }
+  .prose-message a { @apply text-srm-600 underline; }
+}
+
+@layer utilities {
+  .scrollbar-thin { scrollbar-width: thin; }
+}
