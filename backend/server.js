@@ -4,9 +4,6 @@ import cors from 'cors';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { existsSync } from 'fs';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import Anthropic from '@anthropic-ai/sdk';
@@ -14,27 +11,40 @@ import { db, seedFaqs } from './db.js';
 import { signToken, authMiddleware } from './auth.js';
 import { SRM_SYSTEM_PROMPT } from './prompt.js';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
 const app = express();
+// Render usually uses port 10000, but process.env.PORT will handle it
 const PORT = process.env.PORT || 3001;
 
-// Check API key early
+// ── Configuration ──
 if (!process.env.ANTHROPIC_API_KEY) {
   console.warn('\n⚠️  WARNING: ANTHROPIC_API_KEY is not set!');
-  console.warn('   Chat will fail. Set it with:');
-  console.warn('   export ANTHROPIC_API_KEY=sk-ant-...\n');
 }
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || 'missing' });
 
+// Updated CORS to specifically allow your Vercel frontend
 app.use(cors({
-  origin: process.env.FRONTEND_URL || '*',
+  origin: ['https://srm-insider-ai.vercel.app', 'http://localhost:5173'],
   credentials: true
 }));
 app.use(express.json());
 
+// Initialize DB
 seedFaqs().catch(console.error);
 
-// ── Health ──
+// ── Root Route (Prevents "Cannot GET /" error) ──
+app.get('/', (req, res) => {
+  res.status(200).json({
+    message: "SRM Insider AI Backend is Live",
+    frontend: "https://srm-insider-ai.vercel.app",
+    health: "/api/health"
+  });
+});
+
+// ── Health Check ──
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
@@ -44,7 +54,7 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// ── Auth ──
+// ── Auth Routes ──
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { name, email, password, reg_number, department, year } = req.body;
@@ -114,11 +124,11 @@ app.get('/api/conversations/:id/messages', authMiddleware, async (req, res) => {
   res.json(msgs);
 });
 
-// ── Chat (streaming SSE) ──
+// ── Chat (Streaming) ──
 app.post('/api/chat', authMiddleware, async (req, res) => {
   try {
     const { conversation_id, message } = req.body;
-    if (!conversation_id || !message) return res.status(400).json({ error: 'conversation_id and message required' });
+    if (!conversation_id || !message) return res.status(400).json({ error: 'ID and message required' });
 
     const conv = await db.conversations.findOne({ _id: conversation_id, user_id: req.user.id });
     if (!conv) return res.status(404).json({ error: 'Conversation not found' });
@@ -129,25 +139,23 @@ app.post('/api/chat', authMiddleware, async (req, res) => {
     });
 
     const allMsgs = await db.messages.find({ conversation_id }).sort({ created_at: 1 });
+    
+    // Update Title if it's the first message
     if (allMsgs.length === 1) {
       const title = message.length > 50 ? message.slice(0, 47) + '...' : message;
       await db.conversations.update({ _id: conversation_id }, { $set: { title, updated_at: new Date().toISOString() } });
-    } else {
-      await db.conversations.update({ _id: conversation_id }, { $set: { updated_at: new Date().toISOString() } });
     }
 
     const user = await db.users.findOne({ _id: req.user.id });
-    const sysPrompt = SRM_SYSTEM_PROMPT +
-      `\n\nStudent context — Name: ${user.name}, Department: ${user.department || 'CSE'}, Year: ${user.year || 1}, Reg No: ${user.reg_number || 'N/A'}`;
+    const sysPrompt = SRM_SYSTEM_PROMPT + `\n\nStudent: ${user.name}, Dept: ${user.department}, Year: ${user.year}`;
     const history = allMsgs.map(m => ({ role: m.role, content: m.content }));
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no');
 
     const stream = await client.messages.stream({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-3-sonnet-20240229', // Updated to a current valid model string
       max_tokens: 1024,
       system: sysPrompt,
       messages: history
@@ -171,34 +179,19 @@ app.post('/api/chat', authMiddleware, async (req, res) => {
     res.end();
   } catch (err) {
     console.error('Chat error:', err.message);
-    if (!res.headersSent) {
-      res.status(500).json({ error: err.message });
-    } else {
-      res.write(`data: ${JSON.stringify({ type: 'error', error: err.message })}\n\n`);
-      res.end();
-    }
+    if (!res.headersSent) res.status(500).json({ error: err.message });
+    else res.end();
   }
 });
 
-// ── FAQs ──
+// ── FAQs & Feedback ──
 app.get('/api/faqs', async (req, res) => {
-  try {
-    const { category } = req.query;
-    const query = category ? { category } : {};
-    const faqs = await db.faqs.find(query).sort({ helpful_count: -1 });
-    res.json(faqs);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  const { category } = req.query;
+  const query = category ? { category } : {};
+  const faqs = await db.faqs.find(query).sort({ helpful_count: -1 });
+  res.json(faqs);
 });
 
-app.get('/api/faqs/categories', async (req, res) => {
-  try {
-    const faqs = await db.faqs.find({});
-    const cats = [...new Set(faqs.map(f => f.category))].sort();
-    res.json(cats);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-// ── Feedback ──
 app.post('/api/feedback', authMiddleware, async (req, res) => {
   try {
     const { message_id, rating, comment } = req.body;
@@ -210,40 +203,7 @@ app.post('/api/feedback', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── Stats ──
-app.get('/api/stats', authMiddleware, async (req, res) => {
-  try {
-    const convCount = await db.conversations.count({ user_id: req.user.id });
-    const convs = await db.conversations.find({ user_id: req.user.id });
-    let msgCount = 0;
-    for (const c of convs) {
-      msgCount += await db.messages.count({ conversation_id: c._id, role: 'user' });
-    }
-    const faqCount = await db.faqs.count({});
-    res.json({ conversations: convCount, messages_sent: msgCount, faqs_available: faqCount });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-// ── Serve React frontend (production) ──
-const FRONTEND_DIST = join(__dirname, '..', 'frontend', 'dist');
-if (existsSync(FRONTEND_DIST)) {
-  app.use(express.static(FRONTEND_DIST));
-  // SPA fallback — all non-API routes serve index.html
-  app.get('*', (req, res) => {
-    res.sendFile(join(FRONTEND_DIST, 'index.html'));
-  });
-  console.log('  Static frontend: serving from frontend/dist');
-} else {
-  console.log('  Static frontend: not found (run build step first)');
-}
-
 // ── Start ──
 app.listen(PORT, () => {
-  console.log('\n┌─────────────────────────────────────────┐');
-  console.log('│       SRM Insider AI — Unified Server    │');
-  console.log('└─────────────────────────────────────────┘');
-  console.log(`\n  App running at:  http://localhost:${PORT}`);
-  console.log(`  API health:      http://localhost:${PORT}/api/health`);
-  console.log(`  API Key set:     ${process.env.ANTHROPIC_API_KEY ? '✅ Yes' : '❌ No — set ANTHROPIC_API_KEY'}`);
-  console.log('\n  Ready for connections...\n');
+  console.log(`Backend Running: http://localhost:${PORT}`);
 });
