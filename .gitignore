@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+backend/node_modules/
+frontend/node_modules/
+
+# Build output (generated at deploy time, don't commit)
+frontend/dist/
+
+# Database files (ephemeral)
+backend/data_*.db
+
+# Environment secrets
+.env
+backend/.env
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
